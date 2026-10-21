@@ -7,23 +7,295 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+      - name: Install Android SDK packages
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0"
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.7'
-      - name: Build
+      - name: Create project files
         run: |
-          DIR=$(dirname "$(find . -name settings.gradle -not -path './.git/*' | head -n 1)")
-          echo "Project dir: $DIR"
-          cd "$DIR"
-          gradle assembleDebug --stacktrace
-          mkdir -p "$GITHUB_WORKSPACE/out"
-          cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/out/"
+          mkdir -p proj/app/src/main/java/il/edu/measure4 proj/app/src/main/assets
+          cd proj
+          cat > settings.gradle <<'FILE_EOF'
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = 'MeasureApp'
+          include ':app'
+          FILE_EOF
+          cat > build.gradle <<'FILE_EOF'
+          plugins {
+              id 'com.android.application' version '8.5.2' apply false
+          }
+          FILE_EOF
+          cat > gradle.properties <<'FILE_EOF'
+          org.gradle.jvmargs=-Xmx2g
+          android.useAndroidX=true
+          FILE_EOF
+          cat > app/build.gradle <<'FILE_EOF'
+          plugins {
+              id 'com.android.application'
+          }
+          android {
+              namespace 'il.edu.measure4'
+              compileSdk 34
+              defaultConfig {
+                  applicationId 'il.edu.measure4'
+                  minSdk 24
+                  targetSdk 34
+                  versionCode 1
+                  versionName '1.0'
+              }
+          }
+          FILE_EOF
+          cat > app/src/main/AndroidManifest.xml <<'FILE_EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.INTERNET"/>
+              <application
+                  android:label="מודדים ומצלעים"
+                  android:supportsRtl="true"
+                  android:theme="@android:style/Theme.Material.Light.NoActionBar">
+                  <activity android:name=".MainActivity" android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN"/>
+                          <category android:name="android.intent.category.LAUNCHER"/>
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          FILE_EOF
+          cat > app/src/main/java/il/edu/measure4/MainActivity.java <<'FILE_EOF'
+          package il.edu.measure4;
+
+          import android.app.Activity;
+          import android.os.Bundle;
+          import android.webkit.WebSettings;
+          import android.webkit.WebView;
+          import android.webkit.WebViewClient;
+
+          public class MainActivity extends Activity {
+              WebView w;
+
+              @Override
+              protected void onCreate(Bundle b) {
+                  super.onCreate(b);
+                  w = new WebView(this);
+                  setContentView(w);
+                  WebSettings s = w.getSettings();
+                  s.setJavaScriptEnabled(true);
+                  s.setDomStorageEnabled(true);
+                  w.setWebViewClient(new WebViewClient());
+                  w.loadUrl("file:///android_asset/index.html");
+              }
+
+              @Override
+              public void onBackPressed() {
+                  if (w.canGoBack()) w.goBack();
+                  else super.onBackPressed();
+              }
+          }
+          FILE_EOF
+          cat > app/src/main/assets/index.html <<'HTML_EOF'
+          <!DOCTYPE html>
+          <html lang="he" dir="rtl"><head><meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+          <title>מודדים ומצלעים – כיתה ד</title>
+          <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;600;800&display=swap" rel="stylesheet">
+          <style>
+          :root{--bg:#eaf2fb;--grid:#c9dbef;--ink:#17306b;--card:#fff;--pen:#ffd23f;--ok:#238a4f;--bad:#cc3d3d;--soft:#dce8f7;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+          @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1b33;--grid:#1c2c4d;--ink:#e6eeff;--card:#18284a;--soft:#223560;--ok:#4cc582;--bad:#ff7a7a}}
+          :root[data-theme="dark"]{--bg:#0f1b33;--grid:#1c2c4d;--ink:#e6eeff;--card:#18284a;--soft:#223560;--ok:#4cc582;--bad:#ff7a7a}
+          html,body{margin:0;min-height:100%}
+          body{font-family:Rubik,Arial,sans-serif;background-color:var(--bg);background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:24px 24px;color:var(--ink);font-size:18px;line-height:1.5}
+          #app{max-width:520px;margin:0 auto;padding:16px}
+          h1{font-size:30px;font-weight:800;margin:8px 0 2px}
+          h2{font-size:22px;margin:0 0 6px}
+          .sub{margin:0 0 16px;opacity:.8}
+          .card{background:var(--card);border:2px solid var(--ink);border-radius:14px;padding:14px;margin-bottom:14px}
+          .row{display:flex;gap:10px;margin-top:10px}
+          button{font:inherit;font-weight:600;color:var(--ink);background:var(--card);border:2px solid var(--ink);border-radius:12px;padding:12px 14px;cursor:pointer;min-height:48px}
+          button:focus-visible{outline:3px solid var(--pen);outline-offset:2px}
+          .pri{background:var(--pen);flex:1}
+          .sec{flex:1}
+          .back{background:none;border:none;padding:4px 0;min-height:0;text-decoration:underline}
+          .eq{unicode-bidi:isolate;font-weight:600;background:var(--soft);border-radius:8px;padding:4px 10px;margin:6px 0}
+          .bar{height:10px;background:var(--soft);border-radius:6px;overflow:hidden;margin:6px 0 12px}
+          .bar i{display:block;height:100%;background:var(--ok)}
+          .svgbox{background:var(--soft);border-radius:10px;padding:6px;margin:10px 0}
+          .svgbox svg{width:100%;max-height:200px;display:block}
+          .opts{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+          .opts button{font-size:20px}
+          .opts button.ok{background:var(--ok);color:#fff;border-color:var(--ok)}
+          .opts button.bad{background:var(--bad);color:#fff;border-color:var(--bad)}
+          .fb{margin-top:12px;font-weight:600;min-height:28px}
+          .big{font-size:56px;font-weight:800;text-align:center;margin:6px 0}
+          .best{font-size:15px;opacity:.8}
+          .seg{display:flex;gap:8px;margin-bottom:14px}.seg button{flex:1}.seg .on{background:var(--pen)}
+          </style></head>
+          <body><div id="app"></div>
+          <script>
+          const R=(a,b)=>a+Math.floor(Math.random()*(b-a+1));
+          const sh=a=>a.map(x=>[Math.random(),x]).sort((p,q)=>p[0]-q[0]).map(p=>p[1]);
+          const nums=(ans,more=[])=>{const s=new Set([ans]);[...more,ans+1,ans-1,ans*2,ans+10,ans+2,ans+5].forEach(v=>{if(v>0&&s.size<4)s.add(v)});return sh([...s]).map(String)};
+          const INK='stroke="currentColor" fill="none" stroke-width="2.5" stroke-linejoin="round"';
+          const svg=(w,h,body)=>`<svg viewBox="0 0 ${w} ${h}" role="img">${body}</svg>`;
+          const mk=(q,s,opts,ans,hint)=>({q,svg:s,opts,ans:String(ans),hint});
+          const U=['מ״מ','ס״מ','מ׳','ק״מ'];
+
+          // ---------- length ----------
+          function convert(){const n=R(2,S(5,9,25)),t=R(0,S(1,3,3));
+           if(t==0)return mk(`כמה סנטימטרים יש ב-${n} מטרים?`,'',nums(n*100,[n*10,n*1000]),n*100,'מטר אחד הוא 100 סנטימטרים, אז כופלים ב-100.');
+           if(t==1)return mk(`כמה מילימטרים יש ב-${n} סנטימטרים?`,'',nums(n*10,[n*100,n]),n*10,'סנטימטר אחד הוא 10 מילימטרים, אז כופלים ב-10.');
+           if(t==2)return mk(`כמה מטרים יש ב-${n} קילומטרים?`,'',nums(n*1000,[n*100,n*10]),n*1000,'קילומטר אחד הוא 1,000 מטרים.');
+           return mk(`כמה מטרים יש ב-${n*100} סנטימטרים?`,'',nums(n,[n*10,n*100]),n,'מעבר ליחידה גדולה יותר: מחלקים. 100 ס״מ הם מטר אחד.');}
+          function unitQ(){const it=[['אורך עיפרון','ס״מ'],['עובי מטבע','מ״מ'],['גובה דלת','מ׳'],['המרחק בין תל אביב לחיפה','ק״מ'],['אורך כיתה','מ׳'],['אורך נמלה','מ״מ'],['אורך מחברת','ס״מ'],['אורך נהר','ק״מ']];
+           const [x,u]=it[R(0,it.length-1)];return mk(`באיזו יחידה הכי מתאים למדוד: ${x}?`,'',sh(U),u,'חשבו אם הדבר קטן מאוד, קטן, גדול או ענק.');}
+          function compare(){const m=R(1,S(2,4,9)),eq=R(0,3)==0,c=eq?m*100:R(S(100,50,m*100-40),S(450,450,m*100+40));
+           const a=`${m} מטרים`,b=`${c} סנטימטרים`;const ans=c==m*100?'שווים':(m*100>c?a:b);
+           return mk('מה ארוך יותר?','',sh([a,b,'שווים']),ans,'ממירים הכול לסנטימטרים: מטר אחד הוא 100 ס״מ.');}
+          function ruler(){const L=R(2,S(5,9,9));let t='';
+           for(let i=0;i<=100;i++){const x=20+i*3,len=i%10==0?18:i%5==0?13:8;t+=`<line x1="${x}" x2="${x}" y1="40" y2="${40+len}" ${INK} stroke-width="1.2"/>`;}
+           for(let i=0;i<=10;i++)t+=`<text x="${20+i*30}" y="78" text-anchor="middle" font-size="12" fill="currentColor">${i}</text>`;
+           const s=svg(340,90,`<rect x="10" y="40" width="320" height="38" rx="4" style="fill:var(--pen);fill-opacity:.35" ${INK.replace('fill="none"','')}/>${t}<rect x="20" y="14" width="${L*30}" height="14" rx="3" fill="#2f6fde"/><line x1="${20+L*30}" x2="${20+L*30}" y1="28" y2="40" stroke="currentColor" stroke-dasharray="3 3"/>`);
+           return mk('מה אורך הפס הכחול בסנטימטרים?',s,nums(L),L,'מתחילים מהספרה 0 וקוראים איפה הפס נגמר.');}
+          function addLen(){const m=R(1,S(2,3,9)),c=R(1,9)*S(10,10,5);
+           return mk(`לנועה חבל באורך ${m} מטרים ועוד ${c} סנטימטרים. כמה סנטימטרים יש בכל החבל?`,'',nums(m*100+c,[m*100,m+c,m*10+c]),m*100+c,'ממירים את המטרים לסנטימטרים ואז מחברים.');}
+
+          // ---------- geometry ----------
+          const poly=(n,r=60)=>{let p='';for(let i=0;i<n;i++){const a=-Math.PI/2+i*2*Math.PI/n;p+=`${(100+r*Math.cos(a)).toFixed(1)},${(80+r*Math.sin(a)).toFixed(1)} `;}return `<polygon points="${p}" ${INK} style="fill:var(--pen);fill-opacity:.4"/>`;};
+          const N={3:'משולש',5:'מחומש',6:'משושה',8:'מתומן'};
+          function shapeName(){const k=[3,'sq','rect',5,6,8][R(0,S(2,4,5))];
+           const pool=['משולש','ריבוע','מלבן','מחומש','משושה','מתומן'];
+           let s,ans;
+           if(k=='sq'){s=svg(200,160,`<rect x="50" y="20" width="100" height="100" ${INK} style="fill:var(--pen);fill-opacity:.4"/>`);ans='ריבוע';}
+           else if(k=='rect'){s=svg(200,160,`<rect x="25" y="35" width="150" height="80" ${INK} style="fill:var(--pen);fill-opacity:.4"/>`);ans='מלבן';}
+           else{s=svg(200,160,poly(k));ans=N[k];}
+           const o=sh(pool.filter(x=>x!=ans)).slice(0,3).concat(ans);
+           return mk('איך קוראים לצורה?',s,sh(o),ans,'ספרו את הצלעות ובדקו אם כולן שוות.');}
+          function sides(){const n=[3,5,6,8][R(0,S(1,2,3))];
+           return mk('כמה צלעות יש לצורה?',svg(200,160,poly(n)),nums(n,[4,7]),n,'בכל צורה מספר הצלעות שווה למספר הקודקודים.');}
+          function perim(){const a=R(3,S(6,9,9)),b=R(2,S(4,6,6));
+           const s=svg(230,140,`<rect x="28" y="32" width="${a*16}" height="${b*14}" ${INK} style="fill:var(--pen);fill-opacity:.4"/><text x="${28+a*8}" y="22" text-anchor="middle" font-size="15" fill="currentColor">${a} ס״מ</text><text x="${28+a*16+6}" y="${32+b*7+5}" font-size="15" fill="currentColor">${b} ס״מ</text>`);
+           return mk('מה היקף המלבן בסנטימטרים?',s,nums(2*(a+b),[a*b,a+b]),2*(a+b),'היקף הוא סכום כל ארבע הצלעות: ‏2 × (אורך + רוחב).');}
+          function area(){const a=R(2,S(4,7,7)),b=R(2,S(3,5,5));let g='';
+           for(let i=0;i<a;i++)for(let j=0;j<b;j++)g+=`<rect x="${16+i*24}" y="${10+j*24}" width="24" height="24" ${INK} stroke-width="1.5" style="fill:var(--pen);fill-opacity:.4"/>`;
+           return mk('כל משבצת היא סמ״ר אחד. מה שטח המלבן בסמ״ר?',svg(200,140,g),nums(a*b,[2*(a+b),a+b]),a*b,'שטח = מספר משבצות בשורה × מספר השורות.');}
+          function angle(){const t=R(0,2),d=t==0?R(25,80):t==1?90:R(100,160),r=d*Math.PI/180;
+           const x=50+100*Math.cos(r),y=120-100*Math.sin(r);
+           let m=d==90?`<path d="M50 100 H70 V120" ${INK} stroke-width="1.5"/>`:`<path d="M80 120 A30 30 0 0 0 ${(50+30*Math.cos(r)).toFixed(1)} ${(120-30*Math.sin(r)).toFixed(1)}" ${INK} stroke-width="1.5"/>`;
+           return mk('איזו זווית רואים בציור?',svg(200,140,`<line x1="50" y1="120" x2="160" y2="120" ${INK}/><line x1="50" y1="120" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" ${INK}/>${m}`),sh(['חדה','ישרה','קהה']),['חדה','ישרה','קהה'][t],'ישרה היא 90° כמו פינת דף. חדה קטנה ממנה, וקהה גדולה ממנה.');}
+          function sqPerim(){const n=R(3,S(6,12,40));
+           return mk(`צלע של ריבוע היא ${n} ס״מ. מה ההיקף שלו בסנטימטרים?`,'',nums(4*n,[n*n,2*n]),4*n,'בריבוע ארבע צלעות שוות: כופלים ב-4.');}
+
+          const T={
+           len:{name:'מידות אורך',icon:'📏',gens:[convert,unitQ,compare,ruler,addLen],lesson:[
+            ['היחידות','מילימטר (מ״מ) מודד דברים קטנים, כמו עובי מטבע. סנטימטר (ס״מ) מתאים לעיפרון. מטר (מ׳) מתאים לגובה דלת. קילומטר (ק״מ) מתאים לדרכים.'],
+            ['ממירים יחידות','<div class="eq">1 ס״מ = 10 מ״מ</div><div class="eq">1 מ׳ = 100 ס״מ</div><div class="eq">1 ק״מ = 1,000 מ׳</div>'],
+            ['כופלים או מחלקים?','עוברים ליחידה קטנה יותר (מטר לסנטימטר)? כופלים.<div class="eq">3 מ׳ = 3 × 100 = 300 ס״מ</div>עוברים ליחידה גדולה יותר? מחלקים.'],
+            ['קוראים סרגל','מניחים את ההתחלה על 0 וקוראים את המספר שבו הצורה נגמרת.']]},
+           geo:{name:'גיאומטריה',icon:'📐',gens:[shapeName,sides,perim,area,angle,sqPerim],lesson:[
+            ['צורות וצלעות','משולש – 3 צלעות. מרובע – 4 צלעות (ריבוע ומלבן). מחומש – 5. משושה – 6. מתומן – 8. מספר הקודקודים שווה למספר הצלעות.'],
+            ['היקף','היקף הוא אורך כל הצלעות ביחד.<div class="eq">2 × (אורך + רוחב)</div>במלבן. בריבוע: ארבע צלעות שוות, כופלים ב-4.'],
+            ['שטח','שטח הוא כמה משבצות מכסות את הצורה. במלבן: אורך × רוחב. מודדים בסנטימטרים רבועים (סמ״ר).'],
+            ['זוויות','זווית ישרה היא 90°, כמו פינת דף. זווית חדה קטנה מ-90°. זווית קהה גדולה מ-90°.']]}
+          };
+          T.mix={name:'אתגר מעורב',icon:'🏆',gens:[...T.len.gens,...T.geo.gens]};
+
+          // ---------- app ----------
+          const S=(a,b,c)=>[a,b,c][LV-1];
+          const $=document.getElementById('app');
+          const GN={convert:'המרת יחידות',unitQ:'בחירת יחידה',compare:'השוואת אורכים',ruler:'קריאת סרגל',addLen:'בעיות מילוליות',shapeName:'שמות צורות',sides:'ספירת צלעות',perim:'היקף',area:'שטח',angle:'זוויות',sqPerim:'היקף ריבוע'};
+          const LN=['','קל','בינוני','מאתגר'];
+          const ld=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))||d}catch(e){return d}};
+          const sv=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
+          let best=ld('best4',{}),prog=ld('prog4',{hist:[],st:{}}),LV=ld('lv4',1),Q=null;
+          const setLv=l=>{LV=l;sv('lv4',l);home()};
+
+          function home(){
+           $.innerHTML=`<h1>מודדים ומצלעים</h1><p class="sub">מתמטיקה לכיתה ד: מידות אורך וגיאומטריה</p>
+           <div class="seg" role="group" aria-label="רמת קושי">${[1,2,3].map(l=>`<button class="${l==LV?'on':''}" onclick="setLv(${l})">${LN[l]}</button>`).join('')}</div>`+
+           ['len','geo'].map(k=>`<div class="card"><h2>${T[k].icon} ${T[k].name}</h2><div class="best">${best[k+LV]!=null?'השיא שלך ברמה '+LN[LV]+': '+best[k+LV]+' מתוך 8':'עוד לא תרגלת ברמה '+LN[LV]}</div>
+           <div class="row"><button class="sec" onclick="lesson('${k}')">ללמוד</button><button class="pri" onclick="start('${k}')">לתרגל</button></div></div>`).join('')+
+           `<div class="card"><h2>${T.mix.icon} ${T.mix.name}</h2><div class="best">${best['mix'+LV]!=null?'השיא שלך ברמה '+LN[LV]+': '+best['mix'+LV]+' מתוך 8':'כל הנושאים ביחד'}</div><div class="row"><button class="pri" onclick="start('mix')">יוצאים לדרך</button></div></div>
+           <div class="row"><button class="sec" onclick="gate()">אזור הורים</button></div>`;
+          }
+          function lesson(k){
+           $.innerHTML=`<button class="back" onclick="home()">חזרה</button><h1>${T[k].icon} ${T[k].name}</h1>`+
+           T[k].lesson.map(l=>`<div class="card"><h2>${l[0]}</h2>${l[1]}</div>`).join('')+
+           `<div class="row"><button class="pri" onclick="start('${k}')">לתרגל</button></div>`;
+           window.scrollTo(0,0);
+          }
+          function start(k){
+           const g=T[k].gens,order=sh(g.slice());
+           Q={k,lv:LV,list:Array.from({length:8},(_,i)=>{const f=i<order.length?order[i]:g[R(0,g.length-1)];const q=f();q.g=f.name;return q}),i:0,score:0,done:false};
+           show();
+          }
+          function show(){
+           const q=Q.list[Q.i];Q.done=false;
+           $.innerHTML=`<button class="back" onclick="home()">יציאה</button>
+           <div class="best">רמה ${LN[Q.lv]} – שאלה ${Q.i+1} מתוך 8 – נקודות: ${Q.score}</div><div class="bar"><i style="width:${Q.i/8*100}%"></i></div>
+           <div class="card"><h2>${q.q}</h2>${q.svg?`<div class="svgbox">${q.svg}</div>`:''}
+           <div class="opts">${q.opts.map((o,i)=>`<button onclick="pick(${i})">${o}</button>`).join('')}</div>
+           <div class="fb" id="fb" aria-live="polite"></div><div class="row" id="nx"></div></div>`;
+          }
+          function pick(i){
+           if(Q.done)return;Q.done=true;
+           const q=Q.list[Q.i],bs=document.querySelectorAll('.opts button'),ok=q.opts[i]==q.ans;
+           bs.forEach((b,j)=>{if(q.opts[j]==q.ans)b.classList.add('ok');else if(j==i)b.classList.add('bad');});
+           if(ok)Q.score++;
+           const st=prog.st[q.g]||(prog.st[q.g]={ok:0,n:0});st.n++;if(ok)st.ok++;sv('prog4',prog);
+           document.getElementById('fb').textContent=ok?'נכון! כל הכבוד.':`לא בדיוק. התשובה הנכונה: ${q.ans}. ${q.hint}`;
+           document.getElementById('nx').innerHTML=`<button class="pri" onclick="next()">${Q.i==7?'לתוצאה':'השאלה הבאה'}</button>`;
+          }
+          function next(){Q.i++;Q.i>=8?result():show();}
+          function result(){
+           const s=Q.score,key=Q.k+Q.lv,nb=best[key]==null||s>best[key];
+           if(nb){best[key]=s;sv('best4',best);}
+           prog.hist.push({d:new Date().toLocaleDateString('he-IL'),k:Q.k,l:Q.lv,s});prog.hist=prog.hist.slice(-60);sv('prog4',prog);
+           const msg=s==8?'מושלם! אלופי המדידות':s>=6?'יפה מאוד, כמעט מושלם':s>=4?'התקדמות טובה. עוד סיבוב ותשתפרו':'שווה לקרוא שוב את השיעור ולנסות שוב';
+           $.innerHTML=`<h1>סיימנו!</h1><div class="card"><div class="big">${s} / 8</div><p style="text-align:center">${msg}${nb&&s>0?'<br>שיא חדש!':''}${s==8&&Q.lv<3?'<br>אפשר לעלות לרמה הבאה.':''}</p>
+           <div class="row"><button class="sec" onclick="home()">לתפריט</button><button class="pri" onclick="start('${Q.k}')">עוד סיבוב</button></div></div>`;
+          }
+          function gate(){
+           const a=R(6,9),b=R(6,9);
+           $.innerHTML=`<button class="back" onclick="home()">חזרה</button><h1>אזור הורים</h1><div class="card"><p>כדי להיכנס, פתרו: כמה זה <bdi dir="ltr">${a} × ${b}</bdi>?</p><div class="opts">${nums(a*b).map(o=>`<button onclick="${o==a*b?'parent()':'home()'}">${o}</button>`).join('')}</div></div>`;
+          }
+          function parent(){
+           const h=prog.hist,n=h.length,avg=n?Math.round(h.reduce((t,x)=>t+x.s,0)/n/8*100):0;
+           const rows=Object.entries(prog.st).map(([g,v])=>[g,v.ok,v.n,Math.round(v.ok/v.n*100)]).sort((a,b)=>a[3]-b[3]);
+           const weak=rows.filter(r=>r[2]>=3&&r[3]<70).slice(0,3);
+           $.innerHTML=`<button class="back" onclick="home()">חזרה</button><h1>אזור הורים</h1>
+           <div class="card"><h2>סיכום</h2><p>סיבובי תרגול: ${n}<br>ממוצע הצלחה: ${avg}%</p></div>
+           <div class="card"><h2>נושאים שכדאי לחזק</h2><p>${weak.length?weak.map(r=>GN[r[0]]+' ('+r[3]+'%)').join('<br>'):(n?'אין כרגע נושא חלש. כל הכבוד!':'עדיין אין מספיק נתונים.')}</p></div>
+           <div class="card"><h2>הצלחה לפי נושא</h2>${rows.map(r=>`<div>${GN[r[0]]}: ${r[3]}% (${r[1]} מתוך ${r[2]})</div><div class="bar"><i style="width:${r[3]}%"></i></div>`).join('')||'<p>אין נתונים עדיין.</p>'}</div>
+           <div class="card"><h2>סיבובים אחרונים</h2>${h.slice(-6).reverse().map(x=>`<div>${x.d} – ${T[x.k].name} – ${LN[x.l]} – ${x.s} מתוך 8</div>`).join('')||'<p>אין נתונים עדיין.</p>'}</div>
+           <div class="row"><button class="sec" id="rs" onclick="resetP()">איפוס נתונים</button></div>`;
+          }
+          function resetP(){const b=document.getElementById('rs');if(b.dataset.s){prog={hist:[],st:{}};best={};sv('prog4',prog);sv('best4',best);parent();}else{b.dataset.s=1;b.textContent='לחצו שוב לאישור המחיקה';}}
+          home();
+          </script></body></html>
+          HTML_EOF
+      - name: Build APK
+        working-directory: proj
+        run: gradle assembleDebug --stacktrace
       - uses: actions/upload-artifact@v4
         with:
           name: app-debug-apk
-          path: out/app-debug.apk
+          path: proj/app/build/outputs/apk/debug/app-debug.apk
